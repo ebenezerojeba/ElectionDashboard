@@ -1,0 +1,61 @@
+{
+  "name": "lagos-electoral-intelligence",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electoral data administration, data-quality, collation and reporting platform (Lagos pilot).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:api": "tsx watch --clear-screen=false server/index.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "build:web": "vite build --config web/vite.config.ts",
+    "build:server": "tsc -p tsconfig.server.json && node -e \"require('fs').copyFileSync('worker/py_extract.py','dist/worker/py_extract.py')\"",
+    "build": "npm run build:server && npm run build:web",
+    "start": "node dist/server/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:local": "tsx scripts/local-mongo.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "user:create": "tsx scripts/create-user.ts",
+    "ingest": "tsx worker/cli.ts",
+    "ingest:prod": "node dist/worker/cli.js",
+    "boundaries:import": "tsx scripts/import-boundaries.ts",
+    "simulate": "tsx scripts/simulate-collation.ts"
+  },
+  "dependencies": {
+    "cloudinary": "^2.11.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "maplibre-gl": "^5.6.0",
+    "mongodb": "^6.18.0",
+    "multer": "^2.0.2",
+    "pdfjs-dist": "^5.4.149",
+    "pdfkit": "^0.17.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router": "^7.8.2",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.12",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.3.0",
+    "@types/pdfkit": "^0.17.2",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@types/supertest": "^6.0.3",
+    "@vitejs/plugin-react": "^5.0.2",
+    "mongodb-memory-server": "^10.2.0",
+    "supertest": "^7.1.4",
+    "tailwindcss": "^4.1.12",
+    "tsx": "^4.20.5",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.4",
+    "vitest": "^3.2.4"
+  }
+}

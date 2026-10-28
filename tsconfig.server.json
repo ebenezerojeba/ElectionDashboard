@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "jsx": "preserve",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "sourceMap": false
+  },
+  "include": ["server", "worker", "shared", "scripts"],
+  "exclude": ["node_modules", "dist", "DONE", "web", "test", "scripts/smoke.ts", "scripts/screenshots.ts", "scripts/probe-*.ts"]
+}

@@ -1,0 +1,33 @@
+# ---- RESTRICTED VOTER DATA: never commit ----
+/DONE/
+*.pdf
+*.csv
+!test/fixtures/**/*.csv
+*.bson
+*.archive
+*.gz
+/data/
+/backups/
+/var/
+dump/
+
+# ---- Secrets ----
+.env
+.env.*
+!.env.example
+
+# ---- Build / deps ----
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+*.log
+.DS_Store
+
+# Python venv for the pypdf fallback
+/.venv/
+
+# Demo credentials (synthetic environment)
+.demo-credentials.txt
+.pitch-credentials.txt
