@@ -104,3 +104,35 @@ Expose the API only through a TLS-terminating reverse proxy (for example Caddy o
 ## 8. Cloudinary usage estimate
 
 The only uploads are branding images (a few MB) and officer supporting documents (≤10 MB each, at most 5 per ward report). For 245 wards with two documents each, that is under 5 GB per exercise, well within paid plan limits. Bandwidth is negligible: documents are fetched on demand through signed URLs.
+
+## 9. Online deployment (Vercel + MongoDB Atlas, aggregates only)
+
+The live site holds **no individual voter records**: only aggregates, geography, data-quality issues and file status. The register lookup and re-verification are disabled online (`AGGREGATE_ONLY=true`), and every account needs MFA (`REQUIRE_MFA_ALL=true`).
+
+| Item | Value |
+|---|---|
+| URL | https://lagos-electoral-platform.vercel.app |
+| Vercel project | `lagos-electoral-platform` (Git-triggered deployments disabled in `vercel.json`) |
+| Database | Atlas, database `lagos_eip_cloud` (about 22 MB); connection string in `.env.cloud` (git-ignored) |
+| Vercel env vars | `MONGODB_URI`, `MONGODB_DB`, `RECORD_HASH_KEY`, `APP_ENCRYPTION_KEY` (cloud-only keys), `COOKIE_SECURE=true`, `AGGREGATE_ONLY=true`, `REQUIRE_MFA_ALL=true`, `NODE_ENV`, `RATE_LIMIT_LOGIN_PER_15MIN` |
+
+**Refresh the online figures** after a new import and `verify` on the office machine:
+
+```powershell
+npx tsx scripts/publish-cloud.ts          # replaces the cloud aggregates; never copies records or users
+```
+
+**Redeploy the code** (only the built app and traced server files are uploaded):
+
+```powershell
+npm run build
+node scripts/build-vercel.mjs
+npx vercel deploy --prebuilt --prod
+```
+
+**Add an online user:** `npx tsx scripts/cloud-user.ts --email <email> --name "<name>" --role <role> [--lga 24-11 | --ward 24-11-03]`
+
+Notes:
+- Atlas network access is `0.0.0.0/0` because Vercel has no fixed IPs; the database user is limited to `readWrite` on `lagos_eip_cloud`.
+- The rate limiter is per serverless instance; the database-backed account lockout is the main brute-force protection.
+- Cloudinary uploads stay disabled until `CLOUDINARY_*` variables are added in Vercel.

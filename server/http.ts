@@ -115,9 +115,21 @@ export async function loadSession(req: Request, _res: Response, next: NextFuncti
   next();
 }
 
+/** Online deployments can require MFA for every role (REQUIRE_MFA_ALL=true). */
+/** DISABLE_MFA=true turns phone codes off entirely (email + password only). */
+export const mfaDisabled = () => process.env.DISABLE_MFA === 'true';
+
+export function mfaRequired(role: UserDoc['role']): boolean {
+  if (mfaDisabled()) return false;
+  return process.env.REQUIRE_MFA_ALL === 'true' || MFA_REQUIRED_ROLES.includes(role);
+}
+
+/** Aggregate-only deployments hold no individual records (no lookups, no re-verification). */
+export const aggregateOnly = () => process.env.AGGREGATE_ONLY === 'true';
+
 export function mfaSatisfied(u: UserDoc, s: SessionDoc): boolean {
-  if (s.mfaVerified) return true;
-  return !MFA_REQUIRED_ROLES.includes(u.role) && !u.mfa.enabled;
+  if (s.mfaVerified || mfaDisabled()) return true;
+  return !mfaRequired(u.role) && !u.mfa.enabled;
 }
 
 /** Requires a fully authenticated session (MFA completed where required). */

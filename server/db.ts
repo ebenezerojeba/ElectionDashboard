@@ -259,6 +259,8 @@ export interface Collections {
   media: Collection<MediaDoc>;
   settings: Collection<SettingDoc>;
   boundaries: Collection<BoundaryDoc>;
+  /** Online lookup index: name+birth-year fingerprints → polling unit (no names, no VINs). */
+  nameIndex: Collection<{ _id: string; b?: import('mongodb').Binary; codes?: string[] }>;
 }
 
 export function collections(db: Db): Collections {
@@ -279,6 +281,7 @@ export function collections(db: Db): Collections {
     media: db.collection('media_assets'),
     settings: db.collection('app_settings'),
     boundaries: db.collection('geo_boundaries'),
+    nameIndex: db.collection('name_index'),
   };
 }
 

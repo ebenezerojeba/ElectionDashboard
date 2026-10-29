@@ -80,9 +80,27 @@ The demo has 132,702 validated records across 438 files, with injected defects. 
 | ~25% of records have no usable gender (alphabetical-only copies) | Gender now also shown as the split among known records |
 | Technical tiles (raw rows incl. duplicate copies) confused the executive view | Shown only to data stewards/admins |
 
-## 7. Not yet tested
+## 7. Full register import (2026-10-27/28)
 
-- Full 13,974-file import: blocked pending authorisation (by design).
+| Measure | Result |
+|---|---|
+| Files processed | 13,972 of 13,974 (2 unreadable: one has no page tree, one has a corrupted font map; both flagged critical) |
+| Source rows read (all copies) | 7,827,643 |
+| Validated unique voters | **7,348,909** |
+| Register cover totals (complete PUs) | 7,363,174 (validated = 99.8%) |
+| Rejected rows | 7,521 (kept for review) |
+| Polling units reconciled exactly | **13,171 of 13,230 (99.6%)** |
+| Unbalanced polling units | 59, totalling 6,752 entries: the source PDFs are shorter than their own printed totals (pages with headers but no rows) |
+| Coverage | 20 LGAs, 245 wards, 13,230 of 13,232 PUs |
+| Gender: M / F / unavailable | 3,532,516 / 3,059,547 / 756,846 (10.3%) |
+| Duplicate VIN across PUs | 421 records |
+| Name + birth-year matches (low confidence) | 135,181 records in 66,928 groups |
+| Peak worker memory | 446 MB (limit 700 MB) |
+| Wall-clock | about 4 h of processing (interrupted overnight by laptop sleep; resumed without loss) |
+| Verification (7.3 M records) | about 30 min |
+
+## 8. Not yet tested
+
 - Query performance at full scale (about 7 M records). The pilot shows sub-second aggregate reads, because dashboards read precomputed `agg_geo`. `verify` runtime at full scale still needs measuring.
 - Cloudinary uploads against the real account: no credentials are configured yet. The upload path is unit-tested with a fake service.
 - Browser support beyond Edge/Chromium; a screen-reader pass.

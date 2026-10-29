@@ -175,32 +175,68 @@ export interface SituationLga {
   incidents: number;
 }
 
+/** Settings for a time-driven election-day simulation (exercise ids starting with SIM-). */
+export interface SimulationClock {
+  startAt: Date;
+  cycleMin: number; // the simulated day repeats on this cycle
+  fillMin: number; // reports arrive during this part of the cycle; the rest holds the final picture
+}
+
+type SimSub = { ward: string; lga: string; status: string; values: Record<string, unknown>; updatedAt: Date; sim?: { s: number | null; r: number | null; f: string } };
+
+/** Status of a simulated report at the current point of the cycle (null = not yet reported). */
+export function simStatus(sim: NonNullable<SimSub['sim']>, elapsedSec: number): string | null {
+  if (sim.s === null || elapsedSec < sim.s) return null;
+  if (sim.r !== null && elapsedSec >= sim.r) return sim.f;
+  return 'submitted';
+}
+
 export async function situation(c: Collections, exercise: string, scope: GeoScope) {
-  const [lgas, wards, subs, recent] = await Promise.all([
+  const isSim = exercise.startsWith('SIM-');
+  const clock = isSim ? ((await c.settings.findOne({ _id: 'simulation' }))?.value as SimulationClock | undefined) : undefined;
+  const now = Date.now();
+  const cycleSec = (clock?.cycleMin ?? 60) * 60;
+  const elapsed = clock ? (((now - new Date(clock.startAt).getTime()) / 1000) % cycleSec + cycleSec) % cycleSec : 0;
+  const [lgas, wards, rawSubs, recentAudit] = await Promise.all([
     c.geo.find({ level: 'lga', ...(scope.level === 'ward' ? { _id: { $in: [...new Set(scope.codes.map((w) => w.split('-').slice(0, 2).join('-')))] } } : scopeFilter(scope)) }).sort({ _id: 1 }).toArray(),
     c.geo.find({ level: 'ward', ...scopeFilter(scope) }).project<{ _id: string; lga: string; name: string }>({ lga: 1, name: 1 }).toArray(),
-    c.submissions.find({ exercise, ...scopeFilter(scope) }).project<{ ward: string; lga: string; status: string; values: Record<string, unknown>; updatedAt: Date }>({ ward: 1, lga: 1, status: 1, values: 1, updatedAt: 1 }).toArray(),
-    c.audit
-      .find({ action: { $in: ['collation.submit', 'collation.approve', 'collation.return', 'collation.discrepancy'] }, ...(scope.level === 'state' ? {} : { target: { $regex: '^(' + scope.codes.map(esc).join('|') + ')' } }) })
-      .sort({ at: -1 })
-      .limit(15)
-      .toArray(),
+    c.submissions.find({ exercise, ...scopeFilter(scope) }).project<SimSub>({ ward: 1, lga: 1, status: 1, values: 1, updatedAt: 1, sim: 1 }).toArray(),
+    isSim
+      ? Promise.resolve([])
+      : c.audit
+          .find({ action: { $in: ['collation.submit', 'collation.approve', 'collation.return', 'collation.discrepancy'] }, ...(scope.level === 'state' ? {} : { target: { $regex: '^(' + scope.codes.map(esc).join('|') + ')' } }) })
+          .sort({ at: -1 })
+          .limit(15)
+          .toArray(),
   ]);
+  // In a simulation, each report's status depends on where we are in the cycle.
+  const subs = isSim && clock
+    ? rawSubs.flatMap((x) => {
+        const st = x.sim ? simStatus(x.sim, elapsed) : x.status;
+        return st ? [{ ...x, status: st }] : [];
+      })
+    : rawSubs;
   const byLga = new Map<string, SituationLga>(lgas.map((l) => [l._id, { code: l._id, name: l.name, wards: 0, approved: 0, submitted: 0, returned: 0, draft: 0, missing: 0, reportedShare: 0, incidents: 0 }]));
   for (const w of wards) {
     const r = byLga.get(w.lga);
     if (r) r.wards++;
   }
   const seen = new Set<string>();
-  for (const s of subs) {
-    const r = byLga.get(s.lga);
+  let agents = 0;
+  let pusReported = 0;
+  let pusTotal = 0;
+  for (const s2 of subs) {
+    const r = byLga.get(s2.lga);
     if (!r) continue;
-    seen.add(s.ward);
-    if (s.status === 'approved') r.approved++;
-    else if (s.status === 'submitted') r.submitted++;
-    else if (s.status === 'returned') r.returned++;
+    seen.add(s2.ward);
+    if (s2.status === 'approved') r.approved++;
+    else if (s2.status === 'submitted') r.submitted++;
+    else if (s2.status === 'returned') r.returned++;
     else r.draft++;
-    r.incidents += Number(s.values?.incidents_count) || 0;
+    r.incidents += Number(s2.values?.incidents_count) || 0;
+    agents += Number(s2.values?.agents_deployed) || 0;
+    pusReported += Number(s2.values?.pus_reported) || 0;
+    pusTotal += Number(s2.values?.pus_total) || 0;
   }
   for (const r of byLga.values()) {
     r.missing = r.wards - r.approved - r.submitted - r.returned - r.draft;
@@ -209,12 +245,30 @@ export async function situation(c: Collections, exercise: string, scope: GeoScop
   const rows = [...byLga.values()];
   const sum = (k: keyof SituationLga) => rows.reduce((a, r) => a + (r[k] as number), 0);
   const wardNames = new Map(wards.map((w) => [w._id, w.name]));
+  const lgaNames = new Map(lgas.map((l) => [l._id, l.name]));
+
+  let recent: { at: Date; action: string; ward: string; wardName: string; lga: string; by: string }[];
+  if (isSim && clock) {
+    const events: typeof recent = [];
+    for (const x of rawSubs) {
+      if (!x.sim || x.sim.s === null) continue;
+      const push = (off: number, action: string) => {
+        if (off <= elapsed) events.push({ at: new Date(Date.UTC(2027, 0, 1, 15, 0) + off * 8 * 1000), action, ward: x.ward, wardName: wardNames.get(x.ward) ?? x.ward, lga: lgaNames.get(x.lga) ?? x.lga, by: 'simulation' });
+      };
+      push(x.sim.s, 'submit');
+      if (x.sim.r !== null) push(x.sim.r, x.sim.f === 'returned' ? 'return' : 'approve');
+    }
+    recent = events.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 15); // simulated election-evening clock
+  } else {
+    recent = recentAudit.map((e) => ({ at: e.at, action: e.action.replace('collation.', ''), ward: e.target ?? '', wardName: wardNames.get(e.target ?? '') ?? e.target ?? '', lga: '', by: e.actorEmail ?? 'system' }));
+  }
   return {
     exercise,
-    totals: { wards: sum('wards'), approved: sum('approved'), submitted: sum('submitted'), returned: sum('returned'), draft: sum('draft'), missing: sum('missing'), incidents: sum('incidents') },
+    simulation: isSim ? { cycleMin: clock?.cycleMin ?? 60, elapsedMin: Math.round(elapsed / 60), simulatedClock: clock ? new Date(Date.UTC(2027, 0, 1, 15, 0) + elapsed * 8 * 1000).toISOString() : null } : null,
+    totals: { wards: sum('wards'), approved: sum('approved'), submitted: sum('submitted'), returned: sum('returned'), draft: sum('draft'), missing: sum('missing'), incidents: sum('incidents'), agents, pusReported, pusTotal },
     lgas: rows,
     missingWards: wards.filter((w) => !seen.has(w._id)).slice(0, 40).map((w) => ({ code: w._id, name: w.name, lga: byLga.get(w.lga)?.name ?? w.lga })),
-    recent: recent.map((e) => ({ at: e.at, action: e.action.replace('collation.', ''), ward: e.target ?? '', wardName: wardNames.get(e.target ?? '') ?? e.target ?? '', by: e.actorEmail ?? 'system' })),
+    recent,
     asOf: new Date(),
   };
 }

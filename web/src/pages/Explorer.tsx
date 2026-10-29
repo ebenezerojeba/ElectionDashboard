@@ -8,6 +8,7 @@ import { DataTable, type Column } from '../components/DataTable';
 import { StackedBar } from '../components/charts';
 import { ChoroplethMap, type MapFeatureCollection } from '../components/ChoroplethMap';
 import { METRICS } from '../../../shared/metrics';
+import { SENATORIAL_DISTRICTS } from '../../../shared/senatorial';
 
 interface Agg {
   _id: string;
@@ -44,6 +45,7 @@ export function Explorer() {
   const code = params.get('code') ?? roots[0]!;
   const node = useApi<NodeResp>(`/api/geo/node/${code}`, [code]);
   const [view, setView] = useState<'map' | 'table'>('map');
+  const [groupBy, setGroupBy] = useState<'lga' | 'district'>(params.get('view') === 'district' ? 'district' : 'lga');
   const [metric, setMetric] = useState<MetricKey>('records');
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '_id', dir: 'asc' });
   const [boundaries, setBoundaries] = useState<MapFeatureCollection | null>(null);
@@ -83,14 +85,24 @@ export function Explorer() {
     {
       key: 'status',
       label: 'Reconciled',
-      render: (r) =>
-        r.pusComplete < r.pus ? (
-          <span className="text-xs text-muted">{r.pusComplete}/{r.pus} PUs</span>
-        ) : (r.expected ?? 0) === r.records + r.rejected ? (
-          <span className="text-xs font-medium text-good-ink">✓ Balanced</span>
+      render: (r) => {
+        const exp = r.expected ?? 0;
+        const got = r.records + r.rejected;
+        const share = exp ? Math.min(got, exp) / exp : 1;
+        const note = r.pusComplete < r.pus ? <span className="block text-[11px] text-muted">{r.pusComplete}/{r.pus} PUs processed</span> : null;
+        if (exp === got)
+          return <span className="whitespace-nowrap text-xs font-medium text-good-ink">✓ 100%{note}</span>;
+        // Small shortfalls come from source files shorter than their printed totals (flagged in Data quality).
+        return share >= 0.99 ? (
+          <span className="whitespace-nowrap text-xs text-ink-2" title={`${(exp - got).toLocaleString()} entries short of the printed total`}>
+            {(Math.floor(share * 1000) / 10).toFixed(1)}%{note}
+          </span>
         ) : (
-          <span className="text-xs font-semibold text-critical">▲ Unbalanced</span>
-        ),
+          <span className="whitespace-nowrap text-xs font-semibold text-critical" title={`${(exp - got).toLocaleString()} entries short of the printed total`}>
+            ▲ {(Math.floor(share * 1000) / 10).toFixed(1)}%{note}
+          </span>
+        );
+      },
     },
   ];
 
@@ -184,7 +196,14 @@ export function Explorer() {
             )}
           </Card>
 
-          {unit.level !== 'pu' && (
+          {unit.level === 'state' && (
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">{groupBy === 'lga' ? 'Local government areas' : 'Senatorial districts'}</h2>
+              <Tabs value={groupBy} onChange={setGroupBy} items={[{ value: 'lga', label: 'LGAs' }, { value: 'district', label: 'Senatorial districts' }]} />
+            </div>
+          )}
+          {unit.level === 'state' && groupBy === 'district' && boundaries && <DistrictsView boundaries={boundaries} onPick={go} />}
+          {unit.level !== 'pu' && !(unit.level === 'state' && groupBy === 'district') && (
             <Card
               className="mt-4"
               title={`${CHILD_NAME[unit.level]} in ${unit.name}`}
@@ -225,7 +244,7 @@ export function Explorer() {
                 <div className={showMap ? 'max-h-[400px] overflow-y-auto' : ''}>
                   <DataTable
                     caption={`${CHILD_NAME[unit.level]} in ${unit.name}`}
-                    columns={showMap ? cols.filter((c) => ['_id', 'name', 'records', 'rejected', 'dupVinRecords', 'status'].includes(c.key)) : cols}
+                    columns={showMap ? cols.filter((c) => ['name', 'records', 'dupVinRecords', 'status'].includes(c.key)) : cols}
                     rows={rows}
                     rowKey={(r) => r._id}
                     sort={sort}
@@ -291,3 +310,62 @@ function AreaSearch({ onPick }: { onPick: (code: string) => void }) {
     </div>
   );
 }
+
+interface District { code: string; name: string; color: string; records: number; expected: number; female: number; male: number; dupVinRecords: number; pus: number; ageBands: Record<string, number>; lgas: { code: string; name: string; records: number }[] }
+const titleCaseName = (s: string) => s.toLowerCase().replace(/(^|[\s/-])\S/g, (c) => c.toUpperCase());
+
+/** Lagos by senatorial district: categorical map + one summary per district. */
+function DistrictsView({ boundaries, onPick }: { boundaries: MapFeatureCollection; onPick: (code: string) => void }) {
+  const d = useApi<{ items: District[] }>('/api/geo/districts');
+  if (d.error) return <div className="mt-4"><ErrorState error={d.error} onRetry={d.reload} /></div>;
+  if (!d.data) return <div className="mt-4"><LoadingBlock rows={6} /></div>;
+  const total = d.data.items.reduce((a, x) => a + x.records, 0);
+  const categories: Record<string, string> = {};
+  const values: Record<string, number> = {};
+  const names: Record<string, string> = {};
+  for (const x of d.data.items) for (const l of x.lgas) {
+    categories[l.code] = x.color;
+    values[l.code] = l.records;
+    names[l.code] = l.name + ' (' + x.name + ')';
+  }
+  return (
+    <div className="mt-3 grid gap-4 xl:grid-cols-[1.15fr_1fr]">
+      <Card title="Districts on the map" subtitle="Each LGA is coloured by its senatorial district · select an LGA to drill down">
+        <ChoroplethMap boundaries={boundaries} values={values} names={names} metricLabel="Validated records" categories={categories} categoryLegend={d.data.items.map((x) => ({ label: x.name, color: x.color }))} onSelect={onPick} />
+      </Card>
+      <div className="space-y-3">
+        {d.data.items.map((x) => {
+          const known = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'].reduce((a, k) => a + (x.ageBands[k] ?? 0), 0);
+          const youth = (x.ageBands['18-24'] ?? 0) + (x.ageBands['25-34'] ?? 0);
+          return (
+            <section key={x.code} className="rounded-[14px] border border-line bg-surface p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="h-3.5 w-3.5 rounded" style={{ background: x.color }} aria-hidden="true" />
+                  <h3 className="text-[16px] font-semibold">{x.name}</h3>
+                </div>
+                <p className="tnum text-right">
+                  <span className="text-2xl font-bold">{fmtInt(x.records)}</span>
+                  <span className="block text-xs text-muted">{pct(x.records, total)} of Lagos voters</span>
+                </p>
+              </div>
+              <dl className="mt-2 grid grid-cols-3 gap-2 text-sm">
+                <div><dt className="text-xs text-muted">Polling units</dt><dd className="tnum font-medium">{fmtInt(x.pus)}</dd></div>
+                <div><dt className="text-xs text-muted">Women (known)</dt><dd className="tnum font-medium">{pct(x.female, x.female + x.male)}</dd></div>
+                <div><dt className="text-xs text-muted">Aged 18–34</dt><dd className="tnum font-medium">{pct(youth, known)}</dd></div>
+              </dl>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {x.lgas.map((l) => (
+                  <button key={l.code} onClick={() => onPick(l.code)} className="rounded-full border border-line px-2.5 py-1 text-xs text-ink-2 hover:border-line-strong hover:text-ink">
+                    {titleCaseName(l.name)} <span className="tnum text-muted">{(l.records / 1000).toFixed(0)}k</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+void SENATORIAL_DISTRICTS;

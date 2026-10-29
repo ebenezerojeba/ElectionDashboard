@@ -2,9 +2,9 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { decrypt, encrypt, hashPassword, passwordProblems, randomToken, verifyPassword } from '../crypto.js';
 import { generateSecret, otpauthUri, verifyTotp } from '../auth/totp.js';
-import { audit, clientIp, hashToken, HttpError, mfaSatisfied, parse, rateLimit, SESSION_COOKIE } from '../http.js';
+import { audit, clientIp, hashToken, HttpError, mfaDisabled, mfaRequired, mfaSatisfied, parse, rateLimit, SESSION_COOKIE } from '../http.js';
 import type { UserDoc } from '../db.js';
-import { MFA_REQUIRED_ROLES, ROLE_LABELS, ROLE_PERMISSIONS } from '../../shared/roles.js';
+import { ROLE_LABELS, ROLE_PERMISSIONS } from '../../shared/roles.js';
 import { describeScope } from '../scope.js';
 
 const DUMMY_HASH = 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
@@ -22,7 +22,7 @@ export function publicUser(u: UserDoc) {
     scopeLabel: describeScope(u.scope),
     mfaEnabled: u.mfa.enabled,
     mustChangePassword: !!u.mustChangePassword,
-    mfaRequired: MFA_REQUIRED_ROLES.includes(u.role),
+    mfaRequired: mfaRequired(u.role),
     status: u.status,
     lastLoginAt: u.lastLoginAt ?? null,
     createdAt: u.createdAt,
@@ -31,8 +31,9 @@ export function publicUser(u: UserDoc) {
 }
 
 function mfaState(u: UserDoc): 'none' | 'verify' | 'enroll' {
+  if (mfaDisabled()) return 'none';
   if (u.mfa.enabled) return 'verify';
-  if (MFA_REQUIRED_ROLES.includes(u.role)) return 'enroll';
+  if (mfaRequired(u.role)) return 'enroll';
   return 'none';
 }
 

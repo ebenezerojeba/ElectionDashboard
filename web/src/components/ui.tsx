@@ -9,8 +9,8 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-[22px] font-semibold tracking-tight text-ink">{title}</h1>
-        {subtitle && <p className="mt-1 max-w-3xl text-sm text-ink-2">{subtitle}</p>}
+        <h1 className="text-[28px] font-bold leading-tight tracking-tight text-ink">{title}</h1>
+        {subtitle && <p className="mt-1.5 max-w-3xl text-[14.5px] leading-relaxed text-ink-2">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -19,11 +19,11 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 
 export function Card({ title, subtitle, actions, children, className, pad = true }: { title?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; pad?: boolean }) {
   return (
-    <section className={cx('rounded-xl border border-line bg-surface', className)}>
+    <section className={cx('rounded-[14px] border border-line bg-surface shadow-[0_1px_2px_rgba(14,42,51,0.04)]', className)}>
       {(title || actions) && (
         <header className="flex flex-wrap items-start justify-between gap-2 border-b border-line px-5 py-3.5">
           <div>
-            {title && <h2 className="text-sm font-semibold text-ink">{title}</h2>}
+            {title && <h2 className="text-[15px] font-semibold text-ink">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
           </div>
           {actions}
@@ -39,7 +39,7 @@ export function StatTile({ label, value, note, definition, source, emphasis }: {
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
-    <div className={cx('relative rounded-xl border border-line bg-surface p-4', emphasis && 'ring-1 ring-brand/30')}>
+    <div className={cx('relative overflow-hidden rounded-xl border border-line bg-surface p-4', emphasis && 'border-brand/40 bg-[linear-gradient(180deg,var(--brand-soft),var(--surface)_70%)]')}>
       <div className="flex items-start justify-between gap-2">
         <p className="text-[13px] text-ink-2">{label}</p>
         {definition && (
@@ -49,7 +49,7 @@ export function StatTile({ label, value, note, definition, source, emphasis }: {
           </button>
         )}
       </div>
-      <p className={cx('mt-1 font-semibold tracking-tight text-ink', emphasis ? 'text-[34px] leading-10' : 'text-[26px] leading-8')}>{value}</p>
+      <p className={cx('tnum mt-1 font-bold tracking-tight text-ink', emphasis ? 'text-[36px] leading-10 text-brand' : 'text-[27px] leading-8')}>{value}</p>
       {note && <p className="mt-1 text-xs text-muted">{note}</p>}
       {open && definition && (
         <div id={id} className="mt-3 border-t border-line pt-2 text-xs leading-relaxed text-ink-2">

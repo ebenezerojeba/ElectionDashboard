@@ -27,6 +27,10 @@ const schema = z.object({
   CLOUDINARY_FOLDER: z.string().default('lagos-eip'),
   RATE_LIMIT_LOGIN_PER_15MIN: z.coerce.number().int().default(10),
   RATE_LIMIT_API_PER_MIN: z.coerce.number().int().default(300),
+  /** Online deployment flags (read via process.env in http.ts). */
+  AGGREGATE_ONLY: z.enum(['true', 'false']).default('false'),
+  REQUIRE_MFA_ALL: z.enum(['true', 'false']).default('false'),
+  DISABLE_MFA: z.enum(['true', 'false']).default('false'),
 });
 
 export type AppConfig = z.infer<typeof schema> & { RECORD_HASH_KEY: string; APP_ENCRYPTION_KEY: string };

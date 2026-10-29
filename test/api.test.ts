@@ -405,3 +405,85 @@ describe('audit fixes', () => {
     for (const r of a.body.rows) expect(r.total).toBe(r.dupVin + r.badBirthYear + r.rejected + r.countMismatch);
   });
 });
+
+describe('DISABLE_MFA switch', () => {
+  it('signs privileged users in with email and password only when switched on', async () => {
+    await addUser(t.c, 'nomfa-admin@test.local', 'system_admin', { level: 'state' });
+    process.env.DISABLE_MFA = 'true';
+    try {
+      const agent = request.agent(app);
+      const r = await agent.post('/api/auth/login').set(H).send({ email: 'nomfa-admin@test.local', password: PASSWORD });
+      expect(r.body.mfa).toBe('none');
+      expect((await agent.get('/api/users')).status).toBe(200);
+    } finally {
+      delete process.env.DISABLE_MFA;
+    }
+    // Default (switch off): the same admin must enrol MFA.
+    const again = await request.agent(app).post('/api/auth/login').set(H).send({ email: 'nomfa-admin@test.local', password: PASSWORD });
+    expect(again.body.mfa).toBe('enroll');
+  });
+});
+
+describe('registration check by name and senatorial districts', () => {
+  it('confirms a registered person by full name + birth year, in any word order, and never logs the name', async () => {
+    const s = await login(app, t.c, 'steward@test.local');
+    // First synthetic voter of PU 24-01-01-001: "TESTB, BRAVO N0", born 1951.
+    const hit = await s.post('/api/stats/records/name-lookup').set(H).send({ name: 'Bravo N0 Testb', birthYear: 1951, reason: 'Supporter asked to check registration' });
+    expect(hit.status).toBe(200);
+    expect(hit.body.matches).toHaveLength(1);
+    expect(hit.body.matches[0]).toMatchObject({ pu: '24-01-01-001', ward: '24-01-01', lga: '24-01' });
+    const miss = await s.post('/api/stats/records/name-lookup').set(H).send({ name: 'Bravo N0 Testb', birthYear: 1952, reason: 'Supporter asked to check registration' });
+    expect(miss.body.matches).toHaveLength(0);
+    const tooShort = await s.post('/api/stats/records/name-lookup').set(H).send({ name: 'Testb', birthYear: 1951, reason: 'Supporter asked' });
+    expect(tooShort.status).toBe(400);
+    const log = await t.c.audit.find({ action: 'records.name_lookup' }).toArray();
+    expect(log.length).toBeGreaterThanOrEqual(2);
+    expect(JSON.stringify(log)).not.toMatch(/TESTB|BRAVO/i);
+    // Executives may confirm a named person's registration; ward officers may not.
+    const exec = await login(app, t.c, 'exec@test.local');
+    expect((await exec.post('/api/stats/records/name-lookup').set(H).send({ name: 'Bravo N0 Testb', birthYear: 1951, reason: 'Supporter asked to check' })).status).toBe(200);
+    const ward = await login(app, t.c, 'ward@test.local');
+    expect((await ward.post('/api/stats/records/name-lookup').set(H).send({ name: 'Bravo N0 Testb', birthYear: 1951, reason: 'Supporter asked to check' })).status).toBe(403);
+    // The VIN lookup (with source file details) stays steward-only.
+    expect((await exec.post('/api/stats/records/lookup').set(H).send({ vin: 'A'.repeat(19), reason: 'Supporter asked' })).status).toBe(403);
+  });
+
+  it('district totals are the sum of their LGAs and restricted to state-wide users', async () => {
+    const e = await login(app, t.c, 'exec@test.local');
+    const d = await e.get('/api/geo/districts');
+    expect(d.status).toBe(200);
+    expect(d.body.items.map((x: { name: string }) => x.name)).toEqual(['Lagos Central', 'Lagos East', 'Lagos West 1', 'Lagos West 2']);
+    const west1 = d.body.items.find((x: { code: string }) => x.code === 'LW1');
+    const west2 = d.body.items.find((x: { code: string }) => x.code === 'LW2');
+    const lga01 = await t.c.agg.findOne({ _id: '24-01' });
+    const lga02 = await t.c.agg.findOne({ _id: '24-02' });
+    expect(west1.records).toBe(lga01!.records); // Agege (24-01) is in West 1
+    expect(west2.records).toBe(lga02!.records); // Ajeromi-Ifelodun (24-02) is in West 2
+    const l = await login(app, t.c, 'lga@test.local');
+    expect((await l.get('/api/geo/districts')).status).toBe(403);
+  });
+});
+
+describe('online registration check (fingerprint index, no individual records)', () => {
+  it('finds a registered person from the compact index when running aggregate-only', async () => {
+    const { buildNameIndex } = await import('../server/services/nameIndex.js');
+    await t.c.nameIndex.deleteMany({});
+    const r = await buildNameIndex(t.c.records, async (docs) => {
+      await t.c.nameIndex.insertMany(docs as never[]);
+    });
+    expect(r.entries).toBe(summary.validatedUnique);
+    process.env.AGGREGATE_ONLY = 'true';
+    try {
+      const s = await login(app, t.c, 'steward@test.local');
+      const hit = await s.post('/api/stats/records/name-lookup').set(H).send({ name: 'Testb Bravo N0', birthYear: 1951, reason: 'Supporter asked to check registration' });
+      expect(hit.status).toBe(200);
+      expect(hit.body.matches.map((m: { pu: string }) => m.pu)).toEqual(['24-01-01-001']);
+      const miss = await s.post('/api/stats/records/name-lookup').set(H).send({ name: 'Testb Bravo N0', birthYear: 1930, reason: 'Supporter asked to check registration' }); // no synthetic voter was born in 1930
+      expect(miss.body.matches).toHaveLength(0);
+      // The index holds no names or VINs.
+      expect(JSON.stringify(await t.c.nameIndex.find({}).toArray())).not.toMatch(/TESTB|BRAVO|SYN0/);
+    } finally {
+      delete process.env.AGGREGATE_ONLY;
+    }
+  });
+});

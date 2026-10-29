@@ -15,7 +15,7 @@ const OUT = process.env.OUT_DIR ?? path.join(os.tmpdir(), 'eip-shots');
 const BROWSER = process.env.BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 mkdirSync(OUT, { recursive: true });
 
-const creds = readFileSync('.demo-credentials.txt', 'utf8').split('\n').filter((l) => l.includes('@demo.local')).map((l) => {
+const creds = readFileSync(process.env.CREDS_FILE ?? '.demo-credentials.txt', 'utf8').split('\n').filter((l) => /@(demo|pitch)\.local/.test(l)).map((l) => {
   const [role, email, password, , , secret] = l.trim().split(/\s+/);
   return { role: role!, email: email!, password: password!, secret };
 });
@@ -94,6 +94,9 @@ if (want('quality')) { await as('steward@demo.local'); await shot('05-quality', 
 if (want('collation')) { await as('lga.ikeja@demo.local'); await shot('07-lga-workspace', '/collation/lga'); const w = creds.find((c) => c.role === 'ward_officer')!; await as(w.email); await shot('08-ward-workspace', '/collation/ward'); }
 if (want('reports')) { await as('admin@demo.local'); await shot('09-reports', '/reports'); await shot('10-users', '/users'); await shot('11-audit', '/audit'); }
 if (want('new')) { await as('executive@demo.local'); await shot('13-situation', '/situation', { wait: 5000 }); await shot('15-operations', '/operations', { wait: 3500 }); await as('steward@demo.local'); await shot('14-register-audit', '/audit-register', { wait: 3500 }); }
+if (want('real')) { await as('executive@pitch.local'); await shot('real-dashboard', '/', { full: false, wait: 12000 }); await shot('real-explorer', '/explorer', { full: false, wait: 9000 }); await shot('real-operations', '/operations', { full: false, wait: 4000 }); }
+if (want('style')) { await as('executive@pitch.local'); await shot('s-dashboard', '/', { full: false, wait: 9000 }); await shot('s-explorer', '/explorer', { full: false, wait: 9000 }); await shot('s-situation', '/situation', { full: true, wait: 9000 }); }
+if (want('districts')) { await as('executive@pitch.local'); await shot('d-explorer', '/explorer?view=district', { full: false, wait: 9000 }); await as('steward@pitch.local'); await shot('d-lookup', '/lookup', { full: false, wait: 4000 }); }
 if (want('mobile')) { await as('executive@demo.local'); await shot('12-mobile-dashboard', '/', { width: 390 }); }
 if (process.env.EVAL) { await as('executive@demo.local'); await send('Page.navigate', { url: BASE + '/explorer' }); await new Promise((r) => setTimeout(r, 5000)); const r = await send('Runtime.evaluate', { expression: process.env.EVAL, returnByValue: true }); console.log('EVAL', JSON.stringify(r.result?.value ?? r)); }
 ws.close();

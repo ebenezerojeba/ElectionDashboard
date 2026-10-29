@@ -4,7 +4,8 @@ import { assertScope, HttpError, pageParams, requirePerm } from '../http.js';
 import { canAccessCode, scopeRoots } from '../scope.js';
 import type { AggDoc, GeoUnitDoc } from '../db.js';
 
-import { LAGOS_STATE_CODE, levelOf, parentOf } from '../../shared/geo.js';
+import { AGE_BANDS, LAGOS_STATE_CODE, levelOf, parentOf } from '../../shared/geo.js';
+import { SENATORIAL_DISTRICTS } from '../../shared/senatorial.js';
 
 const SORTABLE = new Set(['name', '_id', 'records', 'expected', 'rejected', 'dupVinRecords', 'female', 'male', 'genderUnknown']);
 
@@ -62,6 +63,20 @@ export function geoRouter(): Router {
       req.ctx.c.agg.countDocuments(filter),
     ]);
     res.json({ items, total, page, limit });
+  });
+
+  /** Senatorial districts: totals are the sum of each district's LGAs (state-wide users). */
+  r.get('/districts', async (req, res) => {
+    await assertScope(req, LAGOS_STATE_CODE);
+    const lgas = await req.ctx.c.agg.find({ level: 'lga' }).toArray();
+    const NUM = ['records', 'expected', 'rejected', 'male', 'female', 'genderUnknown', 'dupVinRecords', 'pus', 'pusWithData', 'pusComplete'] as const;
+    const items = SENATORIAL_DISTRICTS.map((d) => {
+      const members = lgas.filter((l) => d.lgas.includes(l._id));
+      const sum = Object.fromEntries(NUM.map((k) => [k, members.reduce((a, l) => a + (Number(l[k]) || 0), 0)]));
+      const ageBands = Object.fromEntries(AGE_BANDS.map((b) => [b, members.reduce((a, l) => a + (l.ageBands?.[b] ?? 0), 0)]));
+      return { code: d.code, name: d.name, color: d.color, lgas: members.map((l) => ({ code: l._id, name: l.name, records: l.records })).sort((a, b) => b.records - a.records), ...sum, ageBands };
+    });
+    res.json({ items });
   });
 
   /** Boundary polygons (LGA level) within scope, with attribution. */

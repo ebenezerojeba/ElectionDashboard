@@ -39,6 +39,10 @@ export function createApp(opts: { c: Collections; config: AppConfig; media?: Med
     next();
   });
   app.use('/api', express.json({ limit: '200kb' }));
+  app.use((_req, res, next) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow'); // never index a restricted system
+    next();
+  });
   app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     next();
@@ -50,7 +54,7 @@ export function createApp(opts: { c: Collections; config: AppConfig; media?: Med
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.get('/api/public/settings', async (req, res) => {
     const branding = (await req.ctx.c.settings.findOne({ _id: 'branding' }))?.value ?? {};
-    res.json({ dataset: await datasetInfo(req), branding });
+    res.json({ dataset: await datasetInfo(req), branding, deployment: { aggregateOnly: process.env.AGGREGATE_ONLY === 'true' } });
   });
 
   app.use('/api/auth', authRouter());

@@ -32,7 +32,8 @@ export const PERMISSIONS = [
   'imports.manage', // start/pause import jobs, rescan source
   'quality.read',
   'quality.manage', // triage data-quality issues
-  'records.lookup', // restricted: look up an individual record (by VIN) — data stewards only
+  'records.lookup', // restricted: look up an individual record by VIN, with source file/page — data stewards only
+  'records.check', // confirm one named person's registration (full name + birth year)
   'collation.submit', // ward officer: draft/submit ward reports
   'collation.review', // LGA officer: review/return/approve ward reports, consolidate
   'collation.read',
@@ -55,6 +56,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'reports.export',
     'audit.read',
     'media.manage',
+    'records.check',
   ],
   data_steward: [
     'stats.read',
@@ -63,9 +65,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'quality.read',
     'quality.manage',
     'records.lookup',
+    'records.check',
     'reports.export',
   ],
-  executive_viewer: ['stats.read', 'imports.read', 'quality.read', 'collation.read', 'reports.export'],
+  executive_viewer: ['stats.read', 'imports.read', 'quality.read', 'collation.read', 'reports.export', 'records.check'],
   ward_officer: ['stats.read', 'collation.submit', 'collation.read'],
   lga_officer: ['stats.read', 'collation.review', 'collation.read', 'reports.export'],
   report_reviewer: ['stats.read', 'quality.read', 'collation.read', 'reports.export', 'reports.review'],

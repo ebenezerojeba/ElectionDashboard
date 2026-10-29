@@ -57,7 +57,7 @@ function App() {
         <Route path="operations" element={<Guard perm="stats.read"><OpsPlanner /></Guard>} />
         <Route path="quality" element={<Guard perm="quality.read"><Quality /></Guard>} />
         <Route path="imports" element={<Guard perm="imports.read"><Imports /></Guard>} />
-        <Route path="lookup" element={<Guard perm="records.lookup"><Lookup /></Guard>} />
+        <Route path="lookup" element={<Guard perm="records.check"><Lookup /></Guard>} />
         <Route path="collation/ward" element={<Guard perm="collation.submit"><WardWorkspace /></Guard>} />
         <Route path="collation/lga" element={<Guard perm={['collation.review', 'collation.read']}><LgaWorkspace /></Guard>} />
         <Route path="reports" element={<Guard perm="reports.export"><Reports /></Guard>} />

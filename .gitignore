@@ -31,3 +31,8 @@ coverage/
 # Demo credentials (synthetic environment)
 .demo-credentials.txt
 .pitch-credentials.txt
+
+# Pitch materials (confidential aggregates)
+/pitch/
+
+.vercel

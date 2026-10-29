@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import type { Filter } from 'mongodb';
 import { z } from 'zod';
-import { audit, HttpError, pageParams, parse, requirePerm } from '../http.js';
+import { aggregateOnly, audit, HttpError, pageParams, parse, requirePerm } from '../http.js';
 import { can } from '../../shared/roles.js';
-import { scopeFilter, scopeRoots } from '../scope.js';
+import { canAccessCode, scopeFilter, scopeRoots } from '../scope.js';
 import { METRICS } from '../../shared/metrics.js';
-import { vinHashOf } from '../crypto.js';
+import { nameKeyOf, vinHashOf } from '../crypto.js';
+import { normaliseName } from '../../worker/parser.js';
+import { rateLimit } from '../http.js';
 import type { DqIssueDoc } from '../db.js';
 import type { VerificationSummary } from '../../worker/verify.js';
 import { verifyAndAggregate } from '../../worker/verify.js';
@@ -111,6 +113,8 @@ export function statsRouter(): Router {
   });
 
   r.post('/imports/verify', requirePerm('imports.manage'), async (req, res) => {
+    // Without individual records, re-verification would erase the aggregates.
+    if (aggregateOnly()) throw new HttpError(409, 'Verification runs on the secure office machine, not in the online deployment', 'aggregate_only');
     const running = await req.ctx.c.jobs.findOne({ status: 'running', heartbeatAt: { $gt: new Date(Date.now() - 120_000) } });
     if (running) throw new HttpError(409, 'An import is running; verify after it finishes', 'conflict');
     const s = await verifyAndAggregate(req.ctx.c, { by: req.user!.email });
@@ -172,7 +176,60 @@ export function statsRouter(): Router {
   });
 
   // ---------- Restricted individual lookup (data stewards; audited; no names returned) ----------
+  // Registration check by full name + birth year (like INEC's own verification portal).
+  // Names are stored only as a keyed fingerprint, so this confirms a specific person; it cannot browse or partially match.
+  const lookupLimiter = rateLimit({ name: 'name-lookup', windowMs: 60 * 60_000, max: 60, key: (q) => q.user?._id.toHexString() ?? 'anon' });
+  r.post('/records/name-lookup', requirePerm('records.check'), lookupLimiter, async (req, res) => {
+    const body = parse(
+      z.object({
+        name: z.string().trim().min(3).max(120),
+        birthYear: z.coerce.number().int().min(1900).max(2015),
+        lga: z.string().regex(/^24-\d{2}$/).optional().or(z.literal('')),
+        reason: z.string().trim().min(5).max(300),
+      }),
+      req.body,
+    );
+    const norm = normaliseName(body.name);
+    if (norm.split(' ').length < 2) throw new HttpError(400, 'Enter at least a surname and a first name, as printed on the voter card', 'validation');
+    const nk = nameKeyOf(req.ctx.config.RECORD_HASH_KEY, norm, body.birthYear);
+    // Query through the {ward, nk} index: one seek per ward in scope.
+    if (aggregateOnly()) {
+      // Online: compact fingerprint index (bucket = first 4 hex chars; entries = 14-byte remainder + 2-byte PU index).
+      const meta = await req.ctx.c.nameIndex.findOne({ _id: 'pus' });
+      // Without a published index every search would look like "not registered" — say so instead.
+      if (!meta?.codes?.length) throw new HttpError(503, 'The online registration index has not been published yet. Use the office machine for checks.', 'index_unavailable');
+      const bucket = await req.ctx.c.nameIndex.findOne({ _id: nk.slice(0, 4) });
+      const want = Buffer.from(nk.slice(4), 'hex');
+      const pus: string[] = [];
+      const blob = bucket?.b ? Buffer.from(bucket.b.buffer) : Buffer.alloc(0);
+      for (let i = 0; i + 16 <= blob.length; i += 16) {
+        if (blob.compare(want, 0, 14, i, i + 14) === 0) {
+          const code = meta?.codes?.[blob.readUInt16BE(i + 14)];
+          if (code && canAccessCode(req.user!.scope, code) && (!body.lga || code.startsWith(body.lga + '-'))) pus.push(code);
+        }
+      }
+      const geo = new Map((await req.ctx.c.geo.find({ _id: { $in: [...new Set(pus.flatMap((p) => [p, p.slice(0, 8), p.slice(0, 5)]))] } }, { projection: { name: 1 } }).toArray()).map((g) => [g._id, g.name]));
+      await audit(req, 'records.name_lookup', 'success', undefined, { matches: pus.length, reason: body.reason, lgaFilter: body.lga || null, source: 'online_index' });
+      return res.json({
+        searched: { name: norm, birthYear: body.birthYear },
+        matches: pus.slice(0, 20).map((p) => ({ pu: p, puName: geo.get(p) ?? p, ward: p.slice(0, 8), wardName: geo.get(p.slice(0, 8)) ?? p.slice(0, 8), lga: p.slice(0, 5), lgaName: geo.get(p.slice(0, 5)) ?? p.slice(0, 5), birthYear: body.birthYear, gender: null })),
+      });
+    }
+    const wardFilter: Record<string, unknown> = { level: 'ward', ...scopeFilter(req.user!.scope) };
+    if (body.lga) wardFilter.lga = body.lga;
+    const wards = (await req.ctx.c.geo.find(wardFilter, { projection: { _id: 1 } }).toArray()).map((w) => w._id);
+    const recs = await req.ctx.c.records.find({ ward: { $in: wards }, nk }, { projection: { pu: 1, ward: 1, lga: 1, by: 1, g: 1 } }).limit(20).toArray();
+    const names = new Map((await req.ctx.c.geo.find({ _id: { $in: [...new Set(recs.flatMap((x) => [x.pu, x.ward, x.lga]))] } }, { projection: { name: 1 } }).toArray()).map((g) => [g._id, g.name]));
+    // The searched name is never written to the audit log — only that a check happened, the match count and the reason.
+    await audit(req, 'records.name_lookup', 'success', undefined, { matches: recs.length, reason: body.reason, lgaFilter: body.lga || null });
+    res.json({
+      searched: { name: norm, birthYear: body.birthYear },
+      matches: recs.map((x) => ({ pu: x.pu, puName: names.get(x.pu) ?? x.pu, ward: x.ward, wardName: names.get(x.ward) ?? x.ward, lga: x.lga, lgaName: names.get(x.lga) ?? x.lga, birthYear: x.by, gender: x.g })),
+    });
+  });
+
   r.post('/records/lookup', requirePerm('records.lookup'), async (req, res) => {
+    if (aggregateOnly()) throw new HttpError(409, 'Individual register lookups are only available on the secure office machine', 'aggregate_only');
     const { vin, reason } = parse(z.object({ vin: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{18,20}$/, 'VIN format is invalid'), reason: z.string().trim().min(5).max(300) }), req.body);
     const vh = vinHashOf(req.ctx.config.RECORD_HASH_KEY, vin);
     const recs = await req.ctx.c.records.find({ vh, ...scopeFilter(req.user!.scope) }, { projection: { pu: 1, ward: 1, lga: 1, by: 1, g: 1, src: 1 } }).limit(10).toArray();

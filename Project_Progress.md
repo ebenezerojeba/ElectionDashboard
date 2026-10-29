@@ -8,7 +8,8 @@
 | 1. Data foundation: parser, resumable ingestion, verification, data-quality rules, pilot + recovery test | ✅ Done |
 | 2. Secure API: auth + MFA, RBAC, geographic scope, audit, stats, quality, collation, reports, media | ✅ Done |
 | 3. Web application + synthetic demo + LGA boundaries | ✅ Done |
-| 4. Full register import | 🔄 Running (authorisation recorded 2026-10-27 by the account holder; formal approval reference still to be added) |
+| 4. Full register import | ✅ Done 2026-10-28: 7,348,909 validated voters; 99.6% of polling units reconcile (authorisation recorded by the account holder; formal approval reference still to be added) |
+| 4d. Pitch deck + real-data executive brief (`pitch/`, git-ignored) | ✅ Done |
 | 4b. Pitch additions: register audit, field operations planner, situation room + simulator, executive brief | ✅ Done |
 | 4c. Platform audit fixes (rate limiter bug, forced password change, PDF repair, audit confidence) | ✅ Done |
 | 5. Pilot hardening: MongoDB service with auth, HTTPS, BitLocker, backups, Cloudinary credentials, Git repository | ⏳ Next |

@@ -39,7 +39,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { to: '/quality', label: 'Data quality', perm: 'quality.read', icon: I('M12 3 2 21h20zM12 10v5M12 18h.01') },
       { to: '/imports', label: 'Import pipeline', perm: 'imports.read', icon: I('M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3') },
-      { to: '/lookup', label: 'Register lookup', perm: 'records.lookup', icon: I('M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3') },
+      { to: '/lookup', label: 'Check registration', perm: 'records.check', icon: I('M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.3-4.3') },
     ],
   },
   {
@@ -104,7 +104,8 @@ export function Layout() {
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
   if (!me) return null;
-  const visible = NAV.map((g) => ({ ...g, items: g.items.filter((i) => (i.perm ? can(i.perm) : i.any ? i.any.some(can) : true)) })).filter((g) => g.items.length);
+  const hidden = new Set<string>(); // all pages work online; the VIN tab inside Check registration is office-only
+  const visible = NAV.map((g) => ({ ...g, items: g.items.filter((i) => !hidden.has(i.to) && (i.perm ? can(i.perm) : i.any ? i.any.some(can) : true)) })).filter((g) => g.items.length);
 
   const sidebar = (
     <nav aria-label="Main" className="flex h-full flex-col">
@@ -112,19 +113,19 @@ export function Layout() {
         {settings?.branding.logoUrl ? (
           <img src={settings.branding.logoUrl} alt="" className="h-8 w-8 rounded-md object-contain" />
         ) : (
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-brand text-sm font-bold text-brand-ink" aria-hidden="true">
-            LE
+          <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-[var(--ochre)] text-[15px] font-extrabold text-[#1b1206]" aria-hidden="true">
+            Ẹ
           </span>
         )}
         <div className="leading-tight">
-          <p className="text-sm font-semibold text-ink">Lagos Electoral</p>
-          <p className="text-[11px] text-muted">Intelligence &amp; Operations</p>
+          <p className="text-[15px] font-bold text-white">Lagos Electoral</p>
+          <p className="text-[12px] text-side-muted">Intelligence and operations</p>
         </div>
       </div>
       <div className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
         {visible.map((g) => (
           <div key={g.group}>
-            <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted">{g.group}</p>
+            <p className="px-2 pb-1.5 text-[12px] font-semibold text-side-muted">{g.group}</p>
             <ul className="space-y-0.5">
               {g.items.map((i) => (
                 <li key={i.to}>
@@ -132,10 +133,10 @@ export function Layout() {
                     to={i.to}
                     end={i.to === '/'}
                     className={({ isActive }) =>
-                      cx('flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13.5px]', isActive ? 'bg-brand-soft font-medium text-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink')
+                      cx('relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] transition-colors', isActive ? 'bg-side-active font-semibold text-white before:absolute before:inset-y-1.5 before:-left-3 before:w-1 before:rounded-r before:bg-[var(--ochre)]' : 'text-side-ink/85 hover:bg-white/5 hover:text-white')
                     }
                   >
-                    <span className="text-muted">{i.icon}</span>
+                    <span className="opacity-80">{i.icon}</span>
                     {i.label}
                   </NavLink>
                 </li>
@@ -144,10 +145,10 @@ export function Layout() {
           </div>
         ))}
       </div>
-      <div className="border-t border-line p-3">
-        <NavLink to="/account" className="block rounded-lg px-2 py-1.5 hover:bg-surface-2">
-          <p className="truncate text-[13px] font-medium text-ink">{me.user.name}</p>
-          <p className="truncate text-[11px] text-muted">
+      <div className="border-t border-white/10 p-3">
+        <NavLink to="/account" className="block rounded-lg px-2 py-1.5 hover:bg-white/5">
+          <p className="truncate text-[13px] font-semibold text-white">{me.user.name}</p>
+          <p className="truncate text-[11.5px] text-side-muted">
             {me.user.roleLabel} · {me.user.scopeLabel}
           </p>
         </NavLink>
@@ -155,12 +156,12 @@ export function Layout() {
           <label className="sr-only" htmlFor="theme">
             Theme
           </label>
-          <select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)} className="h-8 flex-1 rounded-md border border-line bg-surface px-2 text-xs text-ink-2">
+          <select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)} className="h-8 flex-1 rounded-md border border-white/15 bg-white/5 px-2 text-xs text-side-ink [&>option]:text-black">
             <option value="system">System theme</option>
             <option value="light">Light</option>
             <option value="dark">Dark</option>
           </select>
-          <button onClick={() => void logout()} className="h-8 rounded-md px-2.5 text-xs font-medium text-ink-2 hover:bg-surface-2 hover:text-ink">
+          <button onClick={() => void logout()} className="h-8 rounded-md px-2.5 text-xs font-medium text-side-ink hover:bg-white/10 hover:text-white">
             Sign out
           </button>
         </div>
@@ -172,16 +173,16 @@ export function Layout() {
     <div className="min-h-screen">
       <SyntheticBanner />
       <div className="flex">
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-line bg-surface lg:block">{sidebar}</aside>
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 bg-side lg:block">{sidebar}</aside>
         {open && (
           <div className="fixed inset-0 z-40 lg:hidden">
             <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-            <aside className="absolute inset-y-0 left-0 w-72 max-w-[85%] bg-surface shadow-xl">{sidebar}</aside>
+            <aside className="absolute inset-y-0 left-0 w-72 max-w-[85%] bg-side shadow-xl">{sidebar}</aside>
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5 lg:hidden">
-            <button onClick={() => setOpen(true)} className="rounded-md p-1.5 hover:bg-surface-2" aria-label="Open navigation">
+          <div className="flex items-center gap-3 bg-side px-4 py-2.5 text-white lg:hidden">
+            <button onClick={() => setOpen(true)} className="rounded-md p-1.5 hover:bg-white/10" aria-label="Open navigation">
               {I('M4 6h16M4 12h16M4 18h16')}
             </button>
             <span className="text-sm font-semibold">Lagos Electoral Intelligence</span>

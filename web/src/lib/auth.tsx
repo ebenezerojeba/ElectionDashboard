@@ -11,6 +11,7 @@ export interface Me {
 export interface PublicSettings {
   dataset: { mode: string; label: string; synthetic: boolean };
   branding: { logoUrl?: string | null };
+  deployment?: { aggregateOnly: boolean };
 }
 
 interface AuthCtx {

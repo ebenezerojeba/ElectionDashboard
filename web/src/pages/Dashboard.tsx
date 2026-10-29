@@ -205,6 +205,8 @@ export function Dashboard() {
         </div>
       </div>
 
+      {d && d.scope.level === 'state' && <DistrictStrip />}
+
       {d && d.recentExports.length > 0 && (
         <Card className="mt-4" title="Recent exports" pad={false}>
           <ul className="divide-y divide-line">
@@ -231,5 +233,40 @@ function Row({ label, value, warn }: { label: string; value: React.ReactNode; wa
       <dt className="text-ink-2">{label}</dt>
       <dd className={warn ? 'tnum font-semibold text-critical' : 'tnum font-medium text-ink'}>{value}</dd>
     </div>
+  );
+}
+
+interface DistrictRow { code: string; name: string; color: string; records: number; pus: number; ageBands: Record<string, number>; lgas: { code: string }[] }
+
+/** Senatorial districts at a glance (state-wide users). */
+function DistrictStrip() {
+  const nav = useNavigate();
+  const d = useApi<{ items: DistrictRow[] }>('/api/geo/districts');
+  if (!d.data) return null;
+  const total = d.data.items.reduce((a, x) => a + x.records, 0);
+  return (
+    <Card className="mt-4" title="Senatorial districts" subtitle="Select a district to see it on the map" actions={<Link to="/explorer" className="text-xs font-medium text-brand hover:underline">Open explorer</Link>}>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {d.data.items.map((x) => {
+          const known = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'].reduce((a, k) => a + (x.ageBands[k] ?? 0), 0);
+          const youth = (x.ageBands['18-24'] ?? 0) + (x.ageBands['25-34'] ?? 0);
+          return (
+            <button key={x.code} onClick={() => nav('/explorer?view=district')} className="rounded-xl border border-line p-4 text-left hover:border-line-strong">
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <span className="h-3 w-3 rounded" style={{ background: x.color }} aria-hidden="true" />
+                {x.name}
+              </p>
+              <p className="tnum mt-2 text-[26px] font-bold leading-8">{fmtInt(x.records)}</p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
+                <div className="h-full rounded-full" style={{ width: `${(x.records / (total || 1)) * 100}%`, background: x.color }} />
+              </div>
+              <p className="mt-1.5 text-xs text-muted">
+                {pct(x.records, total)} of Lagos · {x.lgas.length} LGAs · {fmtInt(x.pus)} PUs · {pct(youth, known)} aged 18–34
+              </p>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

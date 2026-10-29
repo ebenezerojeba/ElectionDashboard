@@ -43,9 +43,9 @@ export async function renderBrief(c: Collections, code: string, scope: GeoScope,
     doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(18).text('Executive Brief', L, 20);
     doc.font('Helvetica').fontSize(10).text(`${unit.name}${code === '24' ? ' State' : ''} · voter register intelligence`, L, 44);
     doc.fontSize(8).text(`Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC · ${meta.generatedBy}`, L, 58);
-    const notice = meta.synthetic ? 'SYNTHETIC DEMONSTRATION DATA — NOT OFFICIAL STATISTICS' : 'CONFIDENTIAL — derived from the INEC display register; not official INEC statistics';
+    const notice = meta.synthetic ? 'SYNTHETIC DEMONSTRATION DATA — NOT OFFICIAL STATISTICS' : 'CONFIDENTIAL — NOT OFFICIAL INEC STATISTICS';
     doc.font('Helvetica-Bold').fontSize(7.5).text(notice, W / 2, 24, { width: W / 2 - L, align: 'right' });
-    if (v) doc.font('Helvetica').text(`Register printed ${v.referenceYear} · verified ${new Date(v.at).toISOString().slice(0, 10)}`, W / 2, 36, { width: W / 2 - L, align: 'right' });
+    if (v) doc.font('Helvetica').text(`Register printed ${v.referenceYear} · verified ${new Date(v.at).toISOString().slice(0, 10)}`, W / 2, 40, { width: W / 2 - L, align: 'right' });
 
     // KPI row
     const kpis: [string, string, string][] = [
@@ -134,9 +134,11 @@ export async function renderBrief(c: Collections, code: string, scope: GeoScope,
       doc.fillColor(INK).font('Helvetica-Bold').fontSize(9.5).text(title, xR, yr);
       yr += 14;
       for (const [k, val] of lines) {
-        doc.font('Helvetica').fontSize(7.8).fillColor(MUTED).text(k, xR, yr, { width: colR - 60 });
+        doc.font('Helvetica').fontSize(7.8);
+        const h = doc.heightOfString(k, { width: colR - 75 });
+        doc.fillColor(MUTED).text(k, xR, yr, { width: colR - 75 });
         doc.font('Helvetica-Bold').fillColor(INK).text(val, xR + colR - 70, yr, { width: 70, align: 'right' });
-        yr += 12;
+        yr += Math.max(12, h + 3);
       }
       yr += 8;
     };
@@ -150,7 +152,7 @@ export async function renderBrief(c: Collections, code: string, scope: GeoScope,
     ]);
     box('Register audit (for claims & objections)', [
       ['Records whose VIN appears in another PU', nf(auditTotal.dupVin)],
-      ['Name matches for manual review (low confidence)', nf(auditTotal.possibleDup)],
+      ['Name matches to review (low confidence)', nf(auditTotal.possibleDup)],
       ['Implausible / invalid entries', nf(auditTotal.bad)],
     ]);
     if (v && code === '24') {
